@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tournament Viewer — City Cricket Scorer</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #132a1f; color: #1b382b; min-height: 100vh; display: flex; justify-content: center; }
+    .app-shell { width: 100%; max-width: 540px; min-height: 100vh; background: #e0f2f1; display: flex; flex-direction: column; }
+    .header { background: #004d40; color: #fff; padding: 14px 16px; position: sticky; top: 0; z-index: 10; }
+    .header h1 { font-size: 18px; font-weight: 800; }
+    .header p { font-size: 11.5px; color: #a7ffeb; margin-top: 2px; }
+    .tabs { display: flex; background: #003d33; overflow-x: auto; }
+    .tab { flex: 1; padding: 12px 10px; text-align: center; color: #80cbc4; font-size: 11.5px; font-weight: 800; text-transform: uppercase; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
+    .tab.active { color: #fff; border-bottom-color: #69f0ae; background: rgba(255,255,255,0.06); }
+    .content { padding: 12px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+    .card { background: #fff; border-radius: 8px; padding: 12px; border-left: 4px solid #00796b; box-shadow: 0 2px 5px rgba(0,0,0,0.06); }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; font-size: 13px; }
+    th { background: #004d40; color: #fff; padding: 9px 6px; text-align: center; }
+    th.left, td.left { text-align: left; padding-left: 10px; }
+    td { padding: 9px 6px; text-align: center; border-bottom: 1px solid #e0f2f1; }
+    .status-msg { text-align: center; padding: 36px 16px; color: #546e7a; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div class="header">
+      <h1 id="t-title">Loading Tournament...</h1>
+      <p id="t-meta">Connecting to live tournament feed</p>
+    </div>
+    <div class="tabs">
+      <div class="tab active" data-tab="matches" onclick="switchTab('matches')">Matches</div>
+      <div class="tab" data-tab="points" onclick="switchTab('points')">Points</div>
+      <div class="tab" data-tab="batsmen" onclick="switchTab('batsmen')">Batsmen</div>
+      <div class="tab" data-tab="bowlers" onclick="switchTab('bowlers')">Bowlers</div>
+      <div class="tab" data-tab="squads" onclick="switchTab('squads')">Squads</div>
+    </div>
+    <div id="view-content" class="content">
+      <div class="status-msg">Fetching tournament data...</div>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyC9ciXLlr6Jsp2JU_0ucV48RPP5PJcngg0",
+      authDomain: "testing-live-scorer.firebaseapp.com",
+      databaseURL: "https://testing-live-scorer-default-rtdb.firebaseio.com",
+      projectId: "testing-live-scorer",
+      storageBucket: "testing-live-scorer.firebasestorage.app",
+      messagingSenderId: "729470621630",
+      appId: "1:729470621630:web:a0b945c359ca1840438bef",
+      measurementId: "G-TFXYMNK3BT"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    let tournamentData = null;
+    let currentTab = "matches";
+    const tid = new URLSearchParams(window.location.search).get("tid");
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll(".tab").forEach(el => {
+        el.classList.toggle("active", el.dataset.tab === tab);
+      });
+      renderContent();
+    }
+
+    function fmtOvers(balls) {
+      const b = balls || 0;
+      return `${Math.floor(b / 6)}.${b % 6}`;
+    }
+
+    function computePointsTable(data) {
+      const table = {};
+      const ensureTeam = (name) => {
+        if (!name) return;
+        if (!table[name]) {
+          table[name] = { team: name, p: 0, w: 0, l: 0, t: 0, pts: 0, rf: 0, bf: 0, ra: 0, ba: 0 };
+        }
+      };
+
+      Object.keys(data.squads || {}).forEach(ensureTeam);
+      (data.matches || []).forEach(m => {
+        ensureTeam(m.teamA);
+        ensureTeam(m.teamB);
+        if (!m.completed || !m.innings || !m.innings[0]) return;
+
+        const inn1 = m.innings[0];
+        const inn2 = m.innings[1];
+        const t1 = inn1.batTeam;
+        const t2 = inn2 ? inn2.batTeam : inn1.bowlTeam;
+        ensureTeam(t1);
+        ensureTeam(t2);
+
+        const maxBalls = (m.totalOvers || 20) * 6;
+        const t1Balls = inn1.wickets >= ((m.playersPerSide || 11) - 1) ? maxBalls : (inn1.legalBalls || maxBalls);
+
+        table[t1].p += 1;
+        table[t1].rf += (inn1.runs || 0);
+        table[t1].bf += Math.max(1, t1Balls);
+        if (inn2) {
+          const t2Balls = inn2.wickets >= ((m.playersPerSide || 11) - 1) ? maxBalls : (inn2.legalBalls || maxBalls);
+          table[t2].p += 1;
+          table[t2].rf += (inn2.runs || 0);
+          table[t2].bf += Math.max(1, t2Balls);
+          table[t1].ra += (inn2.runs || 0);
+          table[t1].ba += Math.max(1, t2Balls);
+          table[t2].ra += (inn1.runs || 0);
+          table[t2].ba += Math.max(1, t1Balls);
+        }
+
+        if (m.winner === t1) {
+          table[t1].w += 1; table[t1].pts += 2;
+          if (inn2) table[t2].l += 1;
+        } else if (m.winner === t2) {
+          table[t2].w += 1; table[t2].pts += 2;
+          table[t1].l += 1;
+        } else {
+          table[t1].t += 1; table[t1].pts += 1;
+          if (inn2) { table[t2].t += 1; table[t2].pts += 1; }
+        }
+      });
+
+      return Object.values(table).map(row => {
+        const nrr = row.p > 0 ? ((row.rf / row.bf) * 6 - (row.ra / row.ba) * 6) : 0;
+        return { ...row, nrr };
+      }).sort((a, b) => b.pts - a.pts || b.nrr - a.nrr);
+    }
+
+    function computeBattingStats(matches) {
+      const map = {};
+      (matches || []).forEach(m => {
+        (m.innings || []).forEach(inn => {
+          if (!inn || !inn.batsmen) return;
+          Object.entries(inn.batsmen).forEach(([name, b]) => {
+            if (!map[name]) map[name] = { name, team: b.team || inn.batTeam, r: 0, b: 0, fours: 0, sixes: 0, outs: 0 };
+            map[name].r += (b.r || 0);
+            map[name].b += (b.b || 0);
+            map[name].fours += (b["4s"] || 0);
+            map[name].sixes += (b["6s"] || 0);
+            if (b.out) map[name].outs += 1;
+          });
+        });
+      });
+      return Object.values(map).sort((a, b) => b.r - a.r || b.b - a.b);
+    }
+
+    function computeBowlingStats(matches) {
+      const map = {};
+      (matches || []).forEach(m => {
+        (m.innings || []).forEach(inn => {
+          if (!inn || !inn.bowlers) return;
+          Object.entries(inn.bowlers).forEach(([name, bw]) => {
+            if (!map[name]) map[name] = { name, team: bw.team || inn.bowlTeam, w: 0, r: 0, balls: 0 };
+            map[name].w += (bw.w || 0);
+            map[name].r += (bw.r || 0);
+            map[name].balls += (bw.b || 0);
+          });
+        });
+      });
+      return Object.values(map).sort((a, b) => b.w - a.w || a.r - b.r);
+    }
+
+    function renderContent() {
+      const box = document.getElementById("view-content");
+      if (!tournamentData) return;
+      const matches = tournamentData.matches || [];
+
+      if (currentTab === "matches") {
+        if (!matches.length) {
+          box.innerHTML = `<div class="status-msg">No matches recorded in this tournament yet.</div>`;
+          return;
+        }
+        box.innerHTML = matches.map(m => {
+          const inn1 = m.innings && m.innings[0];
+          const inn2 = m.innings && m.innings[1];
+          const s1 = inn1 ? `${inn1.batTeam}: ${inn1.runs}/${inn1.wickets} (${fmtOvers(inn1.legalBalls)})` : `${m.teamA}`;
+          const s2 = inn2 ? `${inn2.batTeam}: ${inn2.runs}/${inn2.wickets} (${fmtOvers(inn2.legalBalls)})` : `${m.teamB}`;
+          return `
+            <div class="card">
+              <div style="font-size:11px; color:#00796b; font-weight:800;">${m.stage || "Match"} • ${m.date || ""} ${m.venue ? "• " + m.venue : ""}</div>
+              <div style="font-size:15px; font-weight:800; color:#004d40; margin:4px 0;">${m.teamA} vs ${m.teamB}</div>
+              <div style="font-size:13px; font-weight:700;">${s1}</div>
+              <div style="font-size:13px; font-weight:700; color:#37474f;">${s2}</div>
+              <div style="font-size:12px; color:#2e7d32; font-weight:700; margin-top:6px;">${m.result || "In Progress"}</div>
+            </div>
+          `;
+        }).join("");
+      } else if (currentTab === "points") {
+        const rows = computePointsTable(tournamentData);
+        box.innerHTML = `
+          <table>
+            <thead><tr><th class="left">Team</th><th>P</th><th>W</th><th>L</th><th>T</th><th>NRR</th><th>Pts</th></tr></thead>
+            <tbody>
+              ${rows.map(r => `
+                <tr>
+                  <td class="left"><strong>${r.team}</strong></td>
+                  <td>${r.p}</td><td>${r.w}</td><td>${r.l}</td><td>${r.t}</td>
+                  <td>${r.nrr >= 0 ? "+" : ""}${r.nrr.toFixed(2)}</td>
+                  <td><strong>${r.pts}</strong></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        `;
+      } else if (currentTab === "batsmen") {
+        const bats = computeBattingStats(matches);
+        box.innerHTML = `
+          <table>
+            <thead><tr><th class="left">Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead>
+            <tbody>
+              ${bats.map(b => {
+                const sr = b.b > 0 ? ((b.r / b.b) * 100).toFixed(1) : "0.0";
+                return `<tr><td class="left"><strong>${b.name}</strong><br><small style="color:#546e7a;">${b.team || ""}</small></td><td><strong>${b.r}</strong></td><td>${b.b}</td><td>${b.fours}</td><td>${b.sixes}</td><td>${sr}</td></tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        `;
+      } else if (currentTab === "bowlers") {
+        const bowls = computeBowlingStats(matches);
+        box.innerHTML = `
+          <table>
+            <thead><tr><th class="left">Bowler</th><th>O</th><th>R</th><th>W</th><th>Eco</th></tr></thead>
+            <tbody>
+              ${bowls.map(bw => {
+                const eco = bw.balls > 0 ? (bw.r / (bw.balls / 6)).toFixed(2) : "0.00";
+                return `<tr><td class="left"><strong>${bw.name}</strong><br><small style="color:#546e7a;">${bw.team || ""}</small></td><td>${fmtOvers(bw.balls)}</td><td>${bw.r}</td><td><strong>${bw.w}</strong></td><td>${eco}</td></tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        `;
+      } else if (currentTab === "squads") {
+        const squads = tournamentData.squads || {};
+        const teams = Object.keys(squads);
+        if (!teams.length) {
+          box.innerHTML = `<div class="status-msg">No squad details included.</div>`;
+          return;
+        }
+        box.innerHTML = teams.map(team => `
+          <div class="card">
+            <div style="font-size:14px; font-weight:800; color:#004d40; margin-bottom:6px;">${team}</div>
+            <div style="font-size:12.5px; color:#263238; line-height:1.5;">
+              ${(squads[team] || []).map(p => `${p.name}${p.isCaptain ? " (C)" : ""} — <span style="color:#546e7a;">${p.role}</span>`).join("<br>")}
+            </div>
+          </div>
+        `).join("");
+      }
+    }
+
+    if (!tid) {
+      document.getElementById("t-title").innerText = "Missing Tournament ID";
+      document.getElementById("view-content").innerHTML = `<div class="status-msg">Open a valid tournament link containing ?tid=...</div>`;
+    } else {
+      db.collection("tournaments").doc(tid).onSnapshot((doc) => {
+        if (!doc.exists) {
+          document.getElementById("t-title").innerText = "Tournament Not Found";
+          document.getElementById("view-content").innerHTML = `<div class="status-msg">No tournament found for ID: ${tid}</div>`;
+          return;
+        }
+        tournamentData = doc.data() || {};
+        const matchesCount = (tournamentData.matches || []).length;
+        const teamsCount = Object.keys(tournamentData.squads || {}).length;
+        document.getElementById("t-title").innerText = tournamentData.name || tid;
+        document.getElementById("t-meta").innerText = `${matchesCount} Matches • ${teamsCount} Teams • Live Sync`;
+        renderContent();
+      }, () => {
+        document.getElementById("view-content").innerHTML = `<div class="status-msg">Failed to load tournament. Check Firestore rules.</div>`;
+      });
+    }
+  </script>
+</body>
+</html>
