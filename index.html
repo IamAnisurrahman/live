@@ -23,6 +23,20 @@
     th.left, td.left { text-align: left; padding-left: 10px; }
     td { padding: 9px 6px; text-align: center; border-bottom: 1px solid #e0f2f1; }
     .status-msg { text-align: center; padding: 36px 16px; color: #546e7a; font-weight: 600; }
+  .clickable-player { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; color: #004d40; }
+  .clickable-player:hover { color: #00796b; }
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65); z-index: 100; align-items: center; justify-content: center; padding: 14px; }
+  .modal-backdrop.open { display: flex; }
+  .modal-box { width: 100%; max-width: 480px; max-height: 86vh; overflow-y: auto; background: #fff; border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+  .modal-head { background: #004d40; color: #fff; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; }
+  .modal-close { background: rgba(255,255,255,0.16); color: #fff; border: none; border-radius: 6px; padding: 5px 10px; font-weight: 700; cursor: pointer; }
+  .modal-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+  .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .detail-tile { background: #f4fbf8; border: 1px solid #b2dfdb; border-radius: 6px; padding: 8px; text-align: center; }
+  .detail-tile .lbl { font-size: 10px; text-transform: uppercase; color: #546e7a; font-weight: 700; }
+  .detail-tile .val { font-size: 14px; font-weight: 800; color: #004d40; margin-top: 2px; }
+  .sub-heading { font-size: 12px; font-weight: 800; text-transform: uppercase; color: #004d40; margin-bottom: 6px; }
+  .match-link-btn { background: #00796b; color: #fff; border: none; border-radius: 6px; padding: 7px 12px; font-size: 12px; font-weight: 700; cursor: pointer; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -43,7 +57,20 @@
     </div>
   </div>
 
-  <script>
+  <div id="player-detail-modal" class="modal-backdrop" onclick="if(event.target===this)closePlayerModal()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <div id="pm-name" style="font-size:16px; font-weight:800;">Player Name</div>
+        <div id="pm-sub" style="font-size:11px; color:#a7ffeb;">Read-Only Player Profile</div>
+      </div>
+      <button type="button" class="modal-close" onclick="closePlayerModal()">✕ Close</button>
+    </div>
+    <div id="pm-body" class="modal-body"></div>
+  </div>
+</div>
+
+<script>
     const firebaseConfig = {
       apiKey: "AIzaSyC9ciXLlr6Jsp2JU_0ucV48RPP5PJcngg0",
       authDomain: "testing-live-scorer.firebaseapp.com",
@@ -172,26 +199,27 @@
       const matches = tournamentData.matches || [];
 
       if (currentTab === "matches") {
-        if (!matches.length) {
-          box.innerHTML = `<div class="status-msg">No matches recorded in this tournament yet.</div>`;
-          return;
-        }
-        box.innerHTML = matches.map(m => {
-          const inn1 = m.innings && m.innings[0];
-          const inn2 = m.innings && m.innings[1];
-          const s1 = inn1 ? `${inn1.batTeam}: ${inn1.runs}/${inn1.wickets} (${fmtOvers(inn1.legalBalls)})` : `${m.teamA}`;
-          const s2 = inn2 ? `${inn2.batTeam}: ${inn2.runs}/${inn2.wickets} (${fmtOvers(inn2.legalBalls)})` : `${m.teamB}`;
-          return `
-            <div class="card">
-              <div style="font-size:11px; color:#00796b; font-weight:800;">${m.stage || "Match"} • ${m.date || ""} ${m.venue ? "• " + m.venue : ""}</div>
-              <div style="font-size:15px; font-weight:800; color:#004d40; margin:4px 0;">${m.teamA} vs ${m.teamB}</div>
-              <div style="font-size:13px; font-weight:700;">${s1}</div>
-              <div style="font-size:13px; font-weight:700; color:#37474f;">${s2}</div>
-              <div style="font-size:12px; color:#2e7d32; font-weight:700; margin-top:6px;">${m.result || "In Progress"}</div>
-            </div>
-          `;
-        }).join("");
-      } else if (currentTab === "points") {
+      if (!matches.length) {
+        box.innerHTML = `<div class="status-msg">No matches recorded in this tournament yet.</div>`;
+        return;
+      }
+      box.innerHTML = matches.map((m, idx) => {
+        const inn1 = m.innings && m.innings[0];
+        const inn2 = m.innings && m.innings[1];
+        const s1 = inn1 ? `${inn1.batTeam}: ${inn1.runs}/${inn1.wickets} (${fmtOvers(inn1.legalBalls)})` : `${m.teamA}`;
+        const s2 = inn2 ? `${inn2.batTeam}: ${inn2.runs}/${inn2.wickets} (${fmtOvers(inn2.legalBalls)})` : `${m.teamB}`;
+        return `
+          <div class="card">
+            <div style="font-size:11px; color:#00796b; font-weight:800;">${m.stage || "Match"} • ${m.date || ""} ${m.venue ? "• " + m.venue : ""}</div>
+            <div style="font-size:15px; font-weight:800; color:#004d40; margin:4px 0;">${m.teamA} vs ${m.teamB}</div>
+            <div style="font-size:13px; font-weight:700;">${s1}</div>
+            <div style="font-size:13px; font-weight:700; color:#37474f;">${s2}</div>
+            <div style="font-size:12px; color:#2e7d32; font-weight:700; margin-top:6px;">${m.result || "In Progress"}</div>
+            <button type="button" class="match-link-btn" onclick="openMatchScorecardView(${idx})">View Match & Players</button>
+          </div>
+        `;
+      }).join("");
+    } else if (currentTab === "points") {
         const rows = computePointsTable(tournamentData);
         box.innerHTML = `
           <table>
@@ -209,47 +237,47 @@
           </table>
         `;
       } else if (currentTab === "batsmen") {
-        const bats = computeBattingStats(matches);
-        box.innerHTML = `
-          <table>
-            <thead><tr><th class="left">Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead>
-            <tbody>
-              ${bats.map(b => {
-                const sr = b.b > 0 ? ((b.r / b.b) * 100).toFixed(1) : "0.0";
-                return `<tr><td class="left"><strong>${b.name}</strong><br><small style="color:#546e7a;">${b.team || ""}</small></td><td><strong>${b.r}</strong></td><td>${b.b}</td><td>${b.fours}</td><td>${b.sixes}</td><td>${sr}</td></tr>`;
-              }).join("")}
-            </tbody>
-          </table>
-        `;
-      } else if (currentTab === "bowlers") {
-        const bowls = computeBowlingStats(matches);
-        box.innerHTML = `
-          <table>
-            <thead><tr><th class="left">Bowler</th><th>O</th><th>R</th><th>W</th><th>Eco</th></tr></thead>
-            <tbody>
-              ${bowls.map(bw => {
-                const eco = bw.balls > 0 ? (bw.r / (bw.balls / 6)).toFixed(2) : "0.00";
-                return `<tr><td class="left"><strong>${bw.name}</strong><br><small style="color:#546e7a;">${bw.team || ""}</small></td><td>${fmtOvers(bw.balls)}</td><td>${bw.r}</td><td><strong>${bw.w}</strong></td><td>${eco}</td></tr>`;
-              }).join("")}
-            </tbody>
-          </table>
-        `;
-      } else if (currentTab === "squads") {
-        const squads = tournamentData.squads || {};
-        const teams = Object.keys(squads);
-        if (!teams.length) {
-          box.innerHTML = `<div class="status-msg">No squad details included.</div>`;
-          return;
-        }
-        box.innerHTML = teams.map(team => `
-          <div class="card">
-            <div style="font-size:14px; font-weight:800; color:#004d40; margin-bottom:6px;">${team}</div>
-            <div style="font-size:12.5px; color:#263238; line-height:1.5;">
-              ${(squads[team] || []).map(p => `${p.name}${p.isCaptain ? " (C)" : ""} — <span style="color:#546e7a;">${p.role}</span>`).join("<br>")}
-            </div>
-          </div>
-        `).join("");
+      const bats = computeBattingStats(matches);
+      box.innerHTML = `
+        <table>
+          <thead><tr><th class="left">Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead>
+          <tbody>
+            ${bats.map(b => {
+              const sr = b.b > 0 ? ((b.r / b.b) * 100).toFixed(1) : "0.0";
+              return `<tr><td class="left"><strong class="clickable-player" onclick="openPlayerDetailModal(${escJs(b.name)}, ${escJs(b.team || "")})">${escHtml(b.name)}</strong><br><small style="color:#546e7a;">${escHtml(b.team || "")}</small></td><td><strong>${b.r}</strong></td><td>${b.b}</td><td>${b.fours}</td><td>${b.sixes}</td><td>${sr}</td></tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      `;
+    } else if (currentTab === "bowlers") {
+      const bowls = computeBowlingStats(matches);
+      box.innerHTML = `
+        <table>
+          <thead><tr><th class="left">Bowler</th><th>O</th><th>R</th><th>W</th><th>Eco</th></tr></thead>
+          <tbody>
+            ${bowls.map(bw => {
+              const eco = bw.balls > 0 ? (bw.r / (bw.balls / 6)).toFixed(2) : "0.00";
+              return `<tr><td class="left"><strong class="clickable-player" onclick="openPlayerDetailModal(${escJs(bw.name)}, ${escJs(bw.team || "")})">${escHtml(bw.name)}</strong><br><small style="color:#546e7a;">${escHtml(bw.team || "")}</small></td><td>${fmtOvers(bw.balls)}</td><td>${bw.r}</td><td><strong>${bw.w}</strong></td><td>${eco}</td></tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      `;
+    } else if (currentTab === "squads") {
+      const squads = tournamentData.squads || {};
+      const teams = Object.keys(squads);
+      if (!teams.length) {
+        box.innerHTML = `<div class="status-msg">No squad details included.</div>`;
+        return;
       }
+      box.innerHTML = teams.map(team => `
+        <div class="card">
+          <div style="font-size:14px; font-weight:800; color:#004d40; margin-bottom:6px;">${escHtml(team)}</div>
+          <div style="font-size:12.5px; color:#263238; line-height:1.7;">
+            ${(squads[team] || []).map(p => `<span class="clickable-player" onclick="openPlayerDetailModal(${escJs(p.name)}, ${escJs(team)})">${escHtml(p.name)}</span>${p.isCaptain ? " <strong>(C)</strong>" : ""} — <span style="color:#546e7a;">${escHtml(p.role || "Player")}</span>`).join("<br>")}
+          </div>
+        </div>
+      `).join("");
+    }
     }
 
     if (!tid) {
@@ -272,6 +300,240 @@
         document.getElementById("view-content").innerHTML = `<div class="status-msg">Failed to load tournament. Check Firestore rules.</div>`;
       });
     }
-  </script>
+  function escHtml(str) {
+    return String(str ?? "").replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  function escJs(str) {
+    return JSON.stringify(String(str ?? ""));
+  }
+
+  function closePlayerModal() {
+    document.getElementById("player-detail-modal").classList.remove("open");
+  }
+
+  function openMatchScorecardView(matchIndex) {
+    const m = (tournamentData && tournamentData.matches && tournamentData.matches[matchIndex]);
+    if (!m) return;
+
+    document.getElementById("pm-name").innerText = `${m.teamA} vs ${m.teamB}`;
+    document.getElementById("pm-sub").innerText = `${m.stage || "Match"} • ${m.date || ""} ${m.venue ? "• " + m.venue : ""} (Read-Only)`;
+
+    let html = `
+      <div class="detail-grid">
+        <div class="detail-tile"><div class="lbl">Result</div><div class="val" style="font-size:12px;">${escHtml(m.result || "In Progress")}</div></div>
+        <div class="detail-tile"><div class="lbl">Toss</div><div class="val" style="font-size:12px;">${escHtml(m.tossWonBy ? m.tossWonBy + " (" + (m.electedTo || "") + ")" : "-")}</div></div>
+        <div class="detail-tile"><div class="lbl">Overs / Side</div><div class="val" style="font-size:12px;">${m.totalOvers || 20} Ov • ${m.playersPerSide || 11}P</div></div>
+      </div>
+    `;
+
+    if (m.mom) {
+      html += `<div class="card" style="padding:8px 10px;"><strong>Man of the Match:</strong> ${escHtml(m.mom)}</div>`;
+    }
+
+    (m.innings || []).forEach((inn, i) => {
+      if (!inn) return;
+      const batEntries = Object.entries(inn.batsmen || {});
+      const bowlEntries = Object.entries(inn.bowlers || {});
+      const fowList = inn.fallOfWickets || [];
+      const partList = inn.partnerships || [];
+      const oversList = inn.oversHistory || [];
+
+      html += `
+        <div class="card">
+          <div style="font-weight:800; color:#004d40; font-size:14px; margin-bottom:6px;">
+            Innings ${i + 1}: ${escHtml(inn.batTeam)} — ${inn.runs}/${inn.wickets} (${fmtOvers(inn.legalBalls)} Ov) • Ext: ${inn.extras || 0}
+          </div>
+          <div class="sub-heading">Batting (Tap any player for full details)</div>
+          <table style="margin-bottom:8px;">
+            <thead><tr><th class="left">Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead>
+            <tbody>
+              ${batEntries.map(([name, b]) => {
+                const sr = (b.b || 0) > 0 ? (((b.r || 0) / b.b) * 100).toFixed(1) : "0.0";
+                return `
+                  <tr>
+                    <td class="left">
+                      <span class="clickable-player" onclick="openPlayerDetailModal(${escJs(name)}, ${escJs(inn.batTeam)})">${escHtml(name)}</span>
+                      <div style="font-size:11px; color:#546e7a;">${escHtml(b.howOut || (b.out ? "out" : "not out"))}</div>
+                    </td>
+                    <td><strong>${b.r || 0}</strong></td>
+                    <td>${b.b || 0}</td>
+                    <td>${b["4s"] || 0}</td>
+                    <td>${b["6s"] || 0}</td>
+                    <td>${sr}</td>
+                  </tr>
+                `;
+              }).join("") || `<tr><td colspan="6">No batting records</td></tr>`}
+            </tbody>
+          </table>
+
+          <div class="sub-heading">Bowling (Tap any bowler for full details)</div>
+          <table style="margin-bottom:8px;">
+            <thead><tr><th class="left">Bowler</th><th>O</th><th>R</th><th>W</th><th>M</th><th>Eco</th></tr></thead>
+            <tbody>
+              ${bowlEntries.map(([name, bw]) => {
+                const eco = (bw.b || 0) > 0 ? ((bw.r || 0) / (bw.b / 6)).toFixed(2) : "0.00";
+                return `
+                  <tr>
+                    <td class="left"><span class="clickable-player" onclick="openPlayerDetailModal(${escJs(name)}, ${escJs(inn.bowlTeam)})">${escHtml(name)}</span></td>
+                    <td>${fmtOvers(bw.b)}</td>
+                    <td>${bw.r || 0}</td>
+                    <td><strong>${bw.w || 0}</strong></td>
+                    <td>${bw.m || 0}</td>
+                    <td>${eco}</td>
+                  </tr>
+                `;
+              }).join("") || `<tr><td colspan="6">No bowling records</td></tr>`}
+            </tbody>
+          </table>
+
+          ${fowList.length ? `<div style="font-size:12px; color:#37474f; margin-top:4px;"><strong>Fall of Wickets:</strong> ${fowList.map(f => `${f.wkt}-${f.runs} (${escHtml(f.batsman)}, ${escHtml(f.over)} ov)`).join(" • ")}</div>` : ""}
+          ${partList.length ? `<div style="font-size:12px; color:#37474f; margin-top:4px;"><strong>Partnerships:</strong> ${partList.map(p => `${escHtml(p.bat1)} & ${escHtml(p.bat2)}: ${p.runs || 0} (${p.balls || 0}b)`).join(" • ")}</div>` : ""}
+          ${oversList.length ? `<div style="font-size:12px; color:#37474f; margin-top:4px;"><strong>Overs:</strong> ${oversList.map(o => `Ov ${o.no}: [${(o.balls || []).map(escHtml).join(", ")}] = ${o.runs || 0}r`).join(" | ")}</div>` : ""}
+        </div>
+      `;
+    });
+
+    document.getElementById("pm-body").innerHTML = html;
+    document.getElementById("player-detail-modal").classList.add("open");
+  }
+
+  function openPlayerDetailModal(playerName, fallbackTeam) {
+    if (!tournamentData || !playerName) return;
+
+    // 1. Find squad info if available
+    let squadRole = "Player";
+    let isCaptain = false;
+    let inXI = null;
+    let detectedTeam = fallbackTeam || "";
+
+    Object.entries(tournamentData.squads || {}).forEach(([team, roster]) => {
+      const matchP = (roster || []).find(p => p.name === playerName);
+      if (matchP) {
+        squadRole = matchP.role || squadRole;
+        isCaptain = !!matchP.isCaptain;
+        inXI = matchP.inXI;
+        if (!detectedTeam) detectedTeam = team;
+      }
+    });
+
+    // 2. Collect every match and inning entry for this player
+    const matches = tournamentData.matches || [];
+    let matchesPlayed = 0;
+    let totalRuns = 0, ballsFaced = 0, fours = 0, sixes = 0, outs = 0, notOuts = 0, bestScore = 0;
+    let bowlBalls = 0, runsConceded = 0, wicketsTaken = 0, maidens = 0, bestWkts = -1, bestRunsGiven = 999999;
+    const perMatchEntries = [];
+
+    matches.forEach(m => {
+      let appearedInMatch = false;
+      (m.innings || []).forEach((inn, innIdx) => {
+        if (!inn) return;
+        const batEntry = inn.batsmen && inn.batsmen[playerName];
+        const bowlEntry = inn.bowlers && inn.bowlers[playerName];
+        if (!batEntry && !bowlEntry) return;
+
+        appearedInMatch = true;
+        if (batEntry && batEntry.team && !detectedTeam) detectedTeam = batEntry.team;
+        if (bowlEntry && bowlEntry.team && !detectedTeam) detectedTeam = bowlEntry.team;
+
+        if (batEntry) {
+          const r = batEntry.r || 0;
+          const b = batEntry.b || 0;
+          totalRuns += r;
+          ballsFaced += b;
+          fours += (batEntry["4s"] || 0);
+          sixes += (batEntry["6s"] || 0);
+          if (r > bestScore) bestScore = r;
+          if (batEntry.out) outs += 1;
+          else if (b > 0 || r > 0) notOuts += 1;
+        }
+
+        if (bowlEntry) {
+          const w = bowlEntry.w || 0;
+          const rc = bowlEntry.r || 0;
+          const bb = bowlEntry.b || 0;
+          wicketsTaken += w;
+          runsConceded += rc;
+          bowlBalls += bb;
+          maidens += (bowlEntry.m || 0);
+          if (w > bestWkts || (w === bestWkts && rc < bestRunsGiven)) {
+            bestWkts = w;
+            bestRunsGiven = rc;
+          }
+        }
+
+        perMatchEntries.push({
+          matchTitle: `${m.teamA} vs ${m.teamB}`,
+          stage: m.stage || "Match",
+          date: m.date || "",
+          venue: m.venue || "",
+          result: m.result || "",
+          inningsNo: innIdx + 1,
+          batEntry,
+          bowlEntry
+        });
+      });
+      if (appearedInMatch) matchesPlayed += 1;
+    });
+
+    const batSr = ballsFaced > 0 ? ((totalRuns / ballsFaced) * 100).toFixed(1) : "0.0";
+    const batAvg = outs > 0 ? (totalRuns / outs).toFixed(2) : totalRuns.toFixed(2);
+    const bowlEco = bowlBalls > 0 ? (runsConceded / (bowlBalls / 6)).toFixed(2) : "0.00";
+    const bowlAvg = wicketsTaken > 0 ? (runsConceded / wicketsTaken).toFixed(2) : "-";
+    const bestSpell = bestWkts >= 0 ? `${bestWkts}/${bestRunsGiven}` : "-";
+
+    document.getElementById("pm-name").innerText = `${playerName}${isCaptain ? " (C)" : ""}`;
+    document.getElementById("pm-sub").innerText = `${detectedTeam || "Team"} • ${squadRole}${inXI !== null ? " • " + (inXI ? "Playing XI" : "Squad") : ""} • Read-Only`;
+
+    let html = `
+      <div class="sub-heading">Tournament Batting Summary</div>
+      <div class="detail-grid">
+        <div class="detail-tile"><div class="lbl">Matches</div><div class="val">${matchesPlayed}</div></div>
+        <div class="detail-tile"><div class="lbl">Runs</div><div class="val">${totalRuns}</div></div>
+        <div class="detail-tile"><div class="lbl">Balls</div><div class="val">${ballsFaced}</div></div>
+        <div class="detail-tile"><div class="lbl">4s / 6s</div><div class="val">${fours} / ${sixes}</div></div>
+        <div class="detail-tile"><div class="lbl">Strike Rate</div><div class="val">${batSr}</div></div>
+        <div class="detail-tile"><div class="lbl">Avg / Best</div><div class="val">${batAvg} / ${bestScore}</div></div>
+      </div>
+
+      <div class="sub-heading">Tournament Bowling Summary</div>
+      <div class="detail-grid">
+        <div class="detail-tile"><div class="lbl">Wickets</div><div class="val">${wicketsTaken}</div></div>
+        <div class="detail-tile"><div class="lbl">Overs</div><div class="val">${fmtOvers(bowlBalls)}</div></div>
+        <div class="detail-tile"><div class="lbl">Runs Given</div><div class="val">${runsConceded}</div></div>
+        <div class="detail-tile"><div class="lbl">Economy</div><div class="val">${bowlEco}</div></div>
+        <div class="detail-tile"><div class="lbl">Bowl Avg</div><div class="val">${bowlAvg}</div></div>
+        <div class="detail-tile"><div class="lbl">Best Spell</div><div class="val">${bestSpell}</div></div>
+      </div>
+
+      <div class="sub-heading">Match-by-Match Breakdown (${perMatchEntries.length} Innings)</div>
+    `;
+
+    if (!perMatchEntries.length) {
+      html += `<div class="card">No match statistics recorded yet for this player in this tournament.</div>`;
+    } else {
+      html += perMatchEntries.map(entry => {
+        const b = entry.batEntry;
+        const bw = entry.bowlEntry;
+        const bSr = b && b.b > 0 ? ((b.r / b.b) * 100).toFixed(1) : "0.0";
+        const bwEco = bw && bw.b > 0 ? ((bw.r / (bw.b / 6)).toFixed(2)) : "0.00";
+        return `
+          <div class="card">
+            <div style="font-weight:800; color:#004d40;">${escHtml(entry.matchTitle)} <span style="font-size:11px; color:#00796b;">(Inn ${entry.inningsNo})</span></div>
+            <div style="font-size:11px; color:#546e7a; margin-bottom:6px;">${escHtml(entry.stage)} ${entry.date ? "• " + escHtml(entry.date) : ""} ${entry.venue ? "• " + escHtml(entry.venue) : ""}</div>
+            ${b ? `<div style="font-size:12.5px;"><strong>Bat:</strong> ${b.r || 0} (${b.b || 0}b, ${b["4s"] || 0}x4, ${b["6s"] || 0}x6, SR ${bSr}) — <em>${escHtml(b.howOut || (b.out ? "out" : "not out"))}</em></div>` : ""}
+            ${bw ? `<div style="font-size:12.5px; margin-top:3px;"><strong>Bowl:</strong> ${bw.w || 0}W / ${bw.r || 0}R in ${fmtOvers(bw.b)} ov (M: ${bw.m || 0}, Eco: ${bwEco})</div>` : ""}
+            ${entry.result ? `<div style="font-size:11px; color:#2e7d32; font-weight:700; margin-top:4px;">${escHtml(entry.result)}</div>` : ""}
+          </div>
+        `;
+      }).join("");
+    }
+
+    document.getElementById("pm-body").innerHTML = html;
+    document.getElementById("player-detail-modal").classList.add("open");
+  }
+</script>
 </body>
 </html>
